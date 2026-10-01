@@ -15,17 +15,20 @@ from app.schema_intelligence.snapshot import SnapshotRepository
 
 router = APIRouter(prefix="/api/targets", tags=["Schema Intelligence"])
 
+from app.compat.seed_demo import ensure_demo_target_db
+
 # Target connection resolver shim (reads environment variables or defaults)
 def get_target_adapter(target_id: int) -> DatabaseAdapterCompat:
     """Resolves target database connection URL for a given target ID."""
     url = os.getenv(f"TARGET_{target_id}_URL")
     if not url:
-        if target_id == 1:
-            url = os.getenv("POSTGRES_TARGET_URL", "postgresql+psycopg2://nexusguard:nexusguard@localhost:5433/enterprise")
-        elif target_id == 2:
-            url = os.getenv("MYSQL_TARGET_URL", "mysql+pymysql://nexusguard:nexusguard@localhost:3306/enterprise")
+        if target_id == 1 and os.getenv("POSTGRES_TARGET_URL"):
+            url = os.getenv("POSTGRES_TARGET_URL")
+        elif target_id == 2 and os.getenv("MYSQL_TARGET_URL"):
+            url = os.getenv("MYSQL_TARGET_URL")
         else:
-            url = os.getenv("DEFAULT_TARGET_URL", f"sqlite:///target_demo_{target_id}.db")
+            ensure_demo_target_db()
+            url = os.getenv("DEFAULT_TARGET_URL", "sqlite:///target_demo.db")
     return DatabaseAdapterCompat(url)
 
 
