@@ -11,10 +11,18 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.schema_intelligence.models import Base as SchemaBase
-from app.deception.models import DecoyDeployment as DeceptionBase
-from app.security_events.models import Base as SecurityBase
-from app.defense.models import BlockedIP
+# Standalone Metadata DB Engine and Session Factory defined first to prevent circular imports
+METADATA_DB_URL = os.getenv("METADATA_DATABASE_URL", "sqlite:///nexusguard_metadata.db")
+metadata_engine = create_engine(
+    METADATA_DB_URL,
+    connect_args={"check_same_thread": False} if "sqlite" in METADATA_DB_URL else {},
+    pool_pre_ping=True,
+)
+MetadataSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=metadata_engine)
+
+# Aliases for Person 3 compatibility
+engine = metadata_engine
+SessionLocal = MetadataSessionLocal
 
 
 class DatabaseAdapterCompat:
@@ -45,22 +53,13 @@ class DatabaseAdapterCompat:
         self._engine.dispose()
 
 
-# Standalone Metadata DB Engine and Session Factory
-METADATA_DB_URL = os.getenv("METADATA_DATABASE_URL", "sqlite:///nexusguard_metadata.db")
-metadata_engine = create_engine(
-    METADATA_DB_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in METADATA_DB_URL else {},
-    pool_pre_ping=True,
-)
-MetadataSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=metadata_engine)
-
-# Aliases for Person 3 compatibility
-engine = metadata_engine
-SessionLocal = MetadataSessionLocal
-
-
 def init_metadata_db(target_engine=None):
     """Initializes all metadata database tables across all subsystems."""
+    from app.schema_intelligence.models import Base as SchemaBase
+    from app.deception.models import DecoyDeployment as DeceptionBase
+    from app.security_events.models import Base as SecurityBase
+    from app.defense.models import BlockedIP
+
     eng = target_engine or metadata_engine
     SchemaBase.metadata.create_all(bind=eng)
     DeceptionBase.metadata.create_all(bind=eng)
