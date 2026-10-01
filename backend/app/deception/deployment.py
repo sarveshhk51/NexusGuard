@@ -13,6 +13,14 @@ from app.deception.ddl import DDLPlan
 from app.deception.verification import DecoyVerificationService, VerificationResult
 from app.schema_intelligence.normalization import FullSchemaSnapshot
 
+import sqlite3
+from decimal import Decimal
+
+try:
+    sqlite3.register_adapter(Decimal, float)
+except Exception:
+    pass
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,13 +54,36 @@ class DecoyDeploymentService:
         """
         logger.info("Initiating decoy deployment to target (%s engine)", ddl_plan.engine)
         is_mysql = "mysql" in target_engine.dialect.name.lower()
+        is_sqlite = "sqlite" in target_engine.dialect.name.lower()
+
+        if is_sqlite:
+            from sqlalchemy import event
+            @event.listens_for(target_engine, "connect")
+            def _auto_attach(dbapi_conn, _):
+                try:
+                    cur = dbapi_conn.cursor()
+                    cur.execute(f"ATTACH DATABASE 'nexusguard_decoy.db' AS {DECOY_SCHEMA_NAME};")
+                    cur.close()
+                except Exception:
+                    pass
 
         try:
             with target_engine.begin() as conn:
+                if is_sqlite:
+                    try:
+                        conn.execute(text(f"ATTACH DATABASE 'nexusguard_decoy.db' AS {DECOY_SCHEMA_NAME};"))
+                    except Exception:
+                        pass
                 # 1. Execute schema creation statements
                 for stmt in ddl_plan.schema_statements:
                     logger.debug("Executing schema statement: %s", stmt)
-                    conn.execute(text(stmt))
+                    try:
+                        conn.execute(text(stmt))
+                    except Exception as e:
+                        if is_sqlite and "already in use" in str(e).lower():
+                            logger.info("Decoy schema already attached in SQLite connection")
+                        else:
+                            raise
 
                 # 2. Execute table creation statements
                 for stmt in ddl_plan.table_statements:
@@ -73,6 +104,17 @@ class DecoyDeploymentService:
 
                     # Reflect or construct Table object to bind insert
                     table_obj = Table(raw_table_name, metadata, autoload_with=target_engine, schema=DECOY_SCHEMA_NAME)
+
+                    # Sanitize Decimals for SQLite
+                    if is_sqlite:
+                        sanitized_rows = []
+                        for r in rows:
+                            sanitized_rows.append({
+                                k: float(v) if isinstance(v, Decimal) else v
+                                for k, v in r.items()
+                            })
+                        rows = sanitized_rows
+
                     conn.execute(insert(table_obj), rows)
 
             # 4. Apply Foreign Key constraints
@@ -109,8 +151,16 @@ class DecoyDeploymentService:
                 if is_mysql:
                     conn.execute(text(f"DROP DATABASE IF EXISTS `{DECOY_SCHEMA_NAME}`;"))
                 elif is_sqlite:
-                    # In SQLite test environments, clean up any tables with prefix or mock
-                    pass
+                    import os
+                    try:
+                        conn.execute(text(f"DETACH DATABASE {DECOY_SCHEMA_NAME};"))
+                    except Exception:
+                        pass
+                    if os.path.exists("nexusguard_decoy.db"):
+                        try:
+                            os.remove("nexusguard_decoy.db")
+                        except Exception:
+                            pass
                 else:
                     conn.execute(text(f'DROP SCHEMA IF EXISTS "{DECOY_SCHEMA_NAME}" CASCADE;'))
             logger.info("Decoy environment dropped successfully.")

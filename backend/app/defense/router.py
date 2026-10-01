@@ -72,6 +72,13 @@ def unblock_ip(ip_address: str, db: Session = Depends(get_db)):
     return {"status": "unblocked", "ip_address": ip_address}
 
 
+@router.post("/unblock-all", summary="Unblock All IPs / Reset Containment")
+def unblock_all_ips(db: Session = Depends(get_db)):
+    defense = DefenseService(db)
+    count = defense.unblock_all()
+    return {"status": "unblocked_all", "count": count}
+
+
 @router.post(
     "/simulate-attack",
     summary="Live Demonstration: Execute End-to-End Attack Simulation",
@@ -88,12 +95,18 @@ async def simulate_attack(
     # 1. Determine attack query based on scenario
     if req.custom_query:
         query = req.custom_query
-    elif req.scenario == "reconnaissance":
-        query = "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema != 'sys'"
-    elif req.scenario == "brute_force":
-        query = "SELECT * FROM nexusguard_decoy.payment_vault LIMIT 10"
+    elif req.scenario in ("reconnaissance", "recon"):
+        query = "SELECT table_name, table_schema FROM information_schema.tables WHERE table_schema NOT IN ('sys', 'information_schema');"
+    elif req.scenario in ("brute_force", "vault_exfil"):
+        query = "SELECT card_number, cvv_hash, exp_date FROM nexusguard_decoy.payment_vault LIMIT 50;"
+    elif req.scenario in ("honeytoken_canary", "canary_tokens"):
+        query = "SELECT secret_seed, auth_token FROM nexusguard_decoy.api_credential_canaries WHERE active = 1;"
+    elif req.scenario in ("privilege_escalation", "shadow_admin"):
+        query = "UPDATE nexusguard_decoy.shadow_administrators SET privileges = 'ALL' WHERE username = 'sys_backup';"
+    elif req.scenario in ("benign_query", "normal_user"):
+        query = "SELECT customer_id, company_name, email FROM customers WHERE is_active = 1 LIMIT 5;"
     else:  # default decoy_breach
-        query = "SELECT username, password_hash FROM nexusguard_decoy.admin_credentials WHERE 1=1 --"
+        query = "SELECT username, password_hash FROM nexusguard_decoy.admin_credentials WHERE '1'='1' --"
 
     # 2. Package telemetry as RawEvent
     raw_event = RawEvent(
@@ -120,9 +133,13 @@ async def simulate_attack(
             "triggered": detected_event is not None,
             "rule_matched": detected_event.event_type.value if detected_event else None,
             "severity": detected_event.severity.value if detected_event else "BENIGN",
-            "reason": detected_event.detection_reason if detected_event else "No threat detected",
+            "reason": detected_event.detection_reason if detected_event else "Traffic passed: normal database read on production_crm. No deceptive assets touched.",
         },
-        "active_defense": {},
+        "active_defense": {
+            "ip_block_status": "NOT_BLOCKED" if not detected_event else "ACTIVATED",
+            "action": "ALLOW_TRAFFIC" if not detected_event else "BLOCK_IP",
+            "reason": "Normal legitimate query allowed through gateway." if not detected_event else "Threat detected",
+        },
         "websocket_broadcast": False,
         "subsequent_probe_blocked": False,
     }

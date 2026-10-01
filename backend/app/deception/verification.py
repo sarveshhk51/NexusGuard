@@ -53,6 +53,15 @@ class DecoyVerificationService:
         checks: list[VerificationCheck] = []
         inspector = inspect(target_engine)
         is_mysql = "mysql" in target_engine.dialect.name.lower()
+        is_sqlite = "sqlite" in target_engine.dialect.name.lower()
+
+        if is_sqlite:
+            try:
+                with target_engine.connect() as conn:
+                    conn.execute(text(f"ATTACH DATABASE 'nexusguard_decoy.db' AS {DECOY_SCHEMA_NAME};"))
+            except Exception:
+                pass
+            inspector = inspect(target_engine)
 
         # 1. Schema Exists Check
         all_schemas = inspector.get_schema_names()
@@ -181,7 +190,8 @@ class DecoyVerificationService:
         prod_ok = True
         for schema in snapshot.schemas:
             try:
-                prod_tables = set(inspector.get_table_names(schema=schema.schema_name))
+                target_schema = None if is_sqlite else schema.schema_name
+                prod_tables = set(inspector.get_table_names(schema=target_schema))
                 expected_prod = {t.table_name for t in schema.tables}
                 if prod_tables != expected_prod:
                     prod_ok = False

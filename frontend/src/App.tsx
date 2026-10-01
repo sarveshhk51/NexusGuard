@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { DashboardView } from './components/views/DashboardView';
@@ -19,11 +19,69 @@ import {
   DATABASE_COMPARISON_DATA 
 } from './mock/socData';
 import { NavigationTab, SecurityEvent } from './types/soc';
+import { getApiUrl } from './utils/apiConfig';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
-  const [metrics] = useState(INITIAL_METRICS);
+  const [metrics, setMetrics] = useState(INITIAL_METRICS);
   const [isAttackModalOpen, setIsAttackModalOpen] = useState(false);
+
+  // Live metrics polling from backend
+  const loadMetrics = async () => {
+    try {
+      const res = await fetch(getApiUrl('/api/events/metrics'));
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data) {
+        setMetrics(prev => [
+          {
+            id: 'active-threats',
+            title: 'ACTIVE THREATS',
+            value: data.active_threats_count ?? prev[0].value,
+            delta: `${data.total_events || 0} total events logged`,
+            deltaType: 'increase',
+            description: 'Distinct IP entities probing canary assets',
+            statusColor: '#ef4444'
+          },
+          {
+            id: 'critical-alerts',
+            title: 'CRITICAL ALERTS',
+            value: data.critical_count ?? prev[1].value,
+            delta: 'Requires immediate SOC intervention',
+            deltaType: 'neutral',
+            description: 'Deception triggers and schema scans',
+            statusColor: '#ef4444'
+          },
+          {
+            id: 'decoy-interactions',
+            title: 'DECOY INTERACTIONS',
+            value: data.decoy_interactions_count ?? prev[2].value,
+            delta: 'Synthetic surface traps tripped',
+            deltaType: 'increase',
+            description: 'Total queries directed to synthetic surfaces',
+            statusColor: '#3b82f6'
+          },
+          {
+            id: 'monitored-databases',
+            title: 'MONITORED DATABASES',
+            value: 1,
+            delta: '100% deception mesh coverage',
+            deltaType: 'neutral',
+            description: 'Active database deception nodes',
+            statusColor: '#10b981'
+          }
+        ]);
+      }
+    } catch {
+      // Keep previous metrics if offline
+    }
+  };
+
+  useEffect(() => {
+    loadMetrics();
+    const interval = setInterval(loadMetrics, 8000);
+    return () => clearInterval(interval);
+  }, []);
 
   const {
     events,
@@ -54,10 +112,12 @@ export const App: React.FC = () => {
 
   const handleRefresh = () => {
     injectEvent();
+    loadMetrics();
   };
 
   const handleSimulatedAttackInjected = (attackEvent: SecurityEvent) => {
     injectEvent(attackEvent);
+    loadMetrics();
   };
 
   const renderContent = () => {

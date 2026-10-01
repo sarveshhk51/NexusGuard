@@ -2,91 +2,82 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { SecurityEvent, SeverityLevel } from '../types/soc';
 import { INITIAL_LIVE_EVENTS } from '../mock/socData';
 import { formatRelativeTime } from '../utils/formatters';
-import { WS_BASE_URL } from '../utils/apiConfig';
+import { WS_BASE_URL, getApiUrl } from '../utils/apiConfig';
 
-const SIMULATED_ATTACK_POOL: Array<Omit<SecurityEvent, 'id' | 'timestamp' | 'relativeTime' | 'isNew'>> = [
-  {
-    sourceIp: '10.0.0.42',
-    targetDatabase: 'PostgreSQL 16',
-    eventType: 'DECOY_ACCESS',
-    query: 'SELECT * FROM nexusguard_decoy.customers',
-    severity: 'CRITICAL',
-    attackVector: 'Lateral Movement - Honeypot Table Scan',
-    responseAction: 'Session Isolated & Host Quarantined'
-  },
-  {
-    sourceIp: '192.168.10.88',
-    targetDatabase: 'nexusguard_decoy',
-    eventType: 'CANARY_TOKEN_TRIGGERED',
-    query: 'SELECT secret_seed, auth_token FROM nexusguard_decoy.api_credential_canaries WHERE active = 1',
-    severity: 'HIGH',
-    attackVector: 'Credential Extraction Probe',
-    responseAction: 'IP Throttled & SIEM Flagged'
-  },
-  {
-    sourceIp: '172.16.4.15',
-    targetDatabase: 'PostgreSQL 16',
-    eventType: 'UNAUTHORIZED_SCHEMA_PROBE',
-    query: 'SELECT table_name FROM information_schema.tables WHERE table_schema NOT IN (\'pg_catalog\', \'information_schema\')',
-    severity: 'MEDIUM',
-    attackVector: 'Reconnaissance / Schema Enumeration',
-    responseAction: 'Decoy Schema Injected into Result'
-  },
-  {
-    sourceIp: '10.0.4.19',
-    targetDatabase: 'nexusguard_decoy',
-    eventType: 'HONEY_CREDENTIAL_USE',
-    query: 'UPDATE nexusguard_decoy.shadow_administrators SET privileges = \'ALL\' WHERE username = \'sys_backup\'',
-    severity: 'HIGH',
-    attackVector: 'Privilege Escalation Simulation',
-    responseAction: 'Silent Null-Op Response Returned'
-  },
-  {
-    sourceIp: '10.0.8.99',
-    targetDatabase: 'PostgreSQL 16',
-    eventType: 'DECOY_ACCESS',
-    query: 'SELECT username, password_salt_canary FROM nexusguard_decoy.auth_canary_vault LIMIT 50',
-    severity: 'CRITICAL',
-    attackVector: 'Credential Vault Dump Attempt',
-    responseAction: 'Deception Trap Tripped & Alert Dispatched'
-  },
-  {
-    sourceIp: '192.168.12.102',
-    targetDatabase: 'nexusguard_decoy',
-    eventType: 'SYNTHETIC_PROCEDURE_EXEC',
-    query: 'CALL nexusguard_decoy.sp_export_customer_pii(\'full_export\')',
-    severity: 'CRITICAL',
-    attackVector: 'Exfiltration Procedure Infiltration',
-    responseAction: 'Synthetic Watermarked Payload Returned'
-  },
-  {
-    sourceIp: '172.16.12.44',
-    targetDatabase: 'PostgreSQL 16',
-    eventType: 'DECOY_TABLE_SCAN',
-    query: 'SELECT COUNT(*) FROM nexusguard_decoy.financial_ledger_canary',
-    severity: 'MEDIUM',
-    attackVector: 'Decoy Reconnaissance',
-    responseAction: 'Decoy Counter Incremented'
-  },
-  {
-    sourceIp: '10.0.2.14',
-    targetDatabase: 'nexusguard_decoy',
-    eventType: 'ANOMALOUS_QUERY_SYNTAX',
-    query: 'SELECT * FROM nexusguard_decoy.v_export_transactions WHERE 1=1 AND ASCII(SUBSTRING((SELECT current_user),1,1)) > 64',
-    severity: 'HIGH',
-    attackVector: 'Blind SQL Injection Canary Exploit',
-    responseAction: 'Tarpit Delay Activated'
-  },
-  {
-    sourceIp: '192.168.1.155',
-    targetDatabase: 'PostgreSQL 16',
-    eventType: 'SCHEMA_INTELLIGENCE_DRIFT',
-    query: 'DESCRIBE nexusguard_decoy.api_credential_canaries',
-    severity: 'LOW',
-    attackVector: 'Automated Vulnerability Scanner Detection',
-    responseAction: 'Logged for Behavioral Baseline'
-  }
-];
+function getRandomProceduralEvent(): Omit<SecurityEvent, 'id' | 'timestamp' | 'relativeTime' | 'isNew'> {
+  const ipPrefixes = ['185.220.101', '194.26.29', '45.154.255', '89.248.165', '103.145.12', '198.51.100', '192.168.10'];
+  const chosenPrefix = ipPrefixes[Math.floor(Math.random() * ipPrefixes.length)];
+  const ip = `${chosenPrefix}.${Math.floor(Math.random() * 240) + 10}`;
+
+  const scenarios = [
+    {
+      eventType: 'DECOY_ACCESS',
+      severity: 'CRITICAL' as SeverityLevel,
+      targetDatabase: 'target_demo (nexusguard_decoy)',
+      query: `SELECT username, password_hash FROM nexusguard_decoy.admin_credentials WHERE '1'='1' --`,
+      attackVector: 'Lateral Movement - Decoy Admin Credential Probe',
+      responseAction: 'Attacker IP Dynamically Contained (Banned)',
+      detectionReason: 'Direct honeypot access: Attempted administrative credential exfiltration'
+    },
+    {
+      eventType: 'DECOY_ACCESS',
+      severity: 'CRITICAL' as SeverityLevel,
+      targetDatabase: 'target_demo (nexusguard_decoy)',
+      query: `SELECT card_number, cvv_hash, exp_date FROM nexusguard_decoy.payment_vault LIMIT ${Math.floor(Math.random() * 50) + 10}`,
+      attackVector: 'Exfiltration Probe - Decoy Financial Records',
+      responseAction: 'Attacker IP Dynamically Contained (Banned)',
+      detectionReason: 'Decoy credit card vault queried'
+    },
+    {
+      eventType: 'CANARY_TOKEN_TRIGGERED',
+      severity: 'HIGH' as SeverityLevel,
+      targetDatabase: 'target_demo (nexusguard_decoy)',
+      query: `SELECT secret_seed, auth_token FROM nexusguard_decoy.api_credential_canaries WHERE active = 1`,
+      attackVector: 'Canary Token Tripped',
+      responseAction: 'IP Throttled & SIEM Flagged',
+      detectionReason: 'Synthetic API key canary accessed'
+    },
+    {
+      eventType: 'SCHEMA_ENUMERATION',
+      severity: 'MEDIUM' as SeverityLevel,
+      targetDatabase: 'target_demo (information_schema)',
+      query: `SELECT table_name FROM information_schema.tables WHERE table_schema NOT IN ('sys', 'pg_catalog')`,
+      attackVector: 'Reconnaissance / Metadata Scraping',
+      responseAction: 'Decoy Schema Injected into Result',
+      detectionReason: 'Automated schema enumeration reconnaissance scan'
+    },
+    {
+      eventType: 'DECOY_ACCESS',
+      severity: 'HIGH' as SeverityLevel,
+      targetDatabase: 'target_demo (nexusguard_decoy)',
+      query: `UPDATE nexusguard_decoy.shadow_administrators SET privileges = 'ALL' WHERE username = 'sys_backup'`,
+      attackVector: 'Privilege Escalation Simulation',
+      responseAction: 'Silent Null-Op Response Returned',
+      detectionReason: 'Modification attempt on shadow administrator decoy'
+    },
+    {
+      eventType: 'DECOY_ACCESS',
+      severity: 'CRITICAL' as SeverityLevel,
+      targetDatabase: 'target_demo (nexusguard_decoy)',
+      query: `SELECT username, password_salt_canary FROM nexusguard_decoy.auth_canary_vault LIMIT 100`,
+      attackVector: 'Credential Vault Dump Attempt',
+      responseAction: 'Deception Trap Tripped & Alert Dispatched',
+      detectionReason: 'Direct access to auth canary vault'
+    }
+  ];
+
+  const chosen = scenarios[Math.floor(Math.random() * scenarios.length)];
+  return {
+    sourceIp: ip,
+    targetDatabase: chosen.targetDatabase,
+    eventType: chosen.eventType,
+    query: chosen.query,
+    severity: chosen.severity,
+    attackVector: chosen.attackVector,
+    responseAction: chosen.responseAction,
+    detectionReason: chosen.detectionReason
+  };
+}
 
 export function useSimulatedWebSocket() {
   const [events, setEvents] = useState<SecurityEvent[]>(INITIAL_LIVE_EVENTS);
@@ -101,12 +92,51 @@ export function useSimulatedWebSocket() {
   });
 
   const nextIdRef = useRef(9042);
-  const poolIndexRef = useRef(0);
+
+  // Fetch real events from database on mount
+  useEffect(() => {
+    let isMounted = true;
+    const fetchRealEvents = async () => {
+      try {
+        const response = await fetch(getApiUrl('/api/events?page=1&page_size=50'));
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data && Array.isArray(data.items) && data.items.length > 0 && isMounted) {
+          const mapped: SecurityEvent[] = data.items.map((item: any) => ({
+            id: `evt-${item.id}`,
+            timestamp: item.timestamp,
+            relativeTime: formatRelativeTime(item.timestamp),
+            sourceIp: item.source_ip,
+            targetDatabase: `${item.database_name || 'target_demo'} (${item.schema_name || 'decoy'})`,
+            eventType: item.event_type,
+            query: item.query,
+            severity: item.severity,
+            detectionReason: item.detection_reason,
+            attackVector: item.detection_reason,
+            responseAction: item.severity === 'CRITICAL' ? 'Attacker IP Dynamically Contained' : 'Session Flagged & Logged',
+            isNew: false
+          }));
+          setEvents(mapped);
+          setStats({
+            receivedCount: mapped.length,
+            criticalCount: mapped.filter(e => e.severity === 'CRITICAL').length,
+            highCount: mapped.filter(e => e.severity === 'HIGH').length
+          });
+        }
+      } catch {
+        // Fall back to initial events if backend is temporarily unreachable
+      }
+    };
+
+    fetchRealEvents();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Function to inject an event
   const injectEvent = useCallback((eventTemplate?: Omit<SecurityEvent, 'id' | 'timestamp' | 'relativeTime' | 'isNew'>) => {
-    const template = eventTemplate || SIMULATED_ATTACK_POOL[poolIndexRef.current % SIMULATED_ATTACK_POOL.length];
-    poolIndexRef.current += 1;
+    const template = eventTemplate || getRandomProceduralEvent();
 
     const newEvent: SecurityEvent = {
       ...template,

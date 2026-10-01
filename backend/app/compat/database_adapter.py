@@ -34,6 +34,16 @@ class DatabaseAdapterCompat:
     def __init__(self, connection_url: str):
         self.connection_url = connection_url
         self._engine: Engine = create_engine(connection_url, pool_pre_ping=True)
+        if "sqlite" in connection_url.lower():
+            from sqlalchemy import event
+            @event.listens_for(self._engine, "connect")
+            def _auto_attach_decoy(dbapi_conn, _):
+                try:
+                    cur = dbapi_conn.cursor()
+                    cur.execute("ATTACH DATABASE 'nexusguard_decoy.db' AS nexusguard_decoy;")
+                    cur.close()
+                except Exception:
+                    pass
 
     def get_engine(self) -> Engine:
         """Return the active SQLAlchemy Engine instance."""
@@ -64,6 +74,16 @@ def init_metadata_db(target_engine=None):
     SchemaBase.metadata.create_all(bind=eng)
     DeceptionBase.metadata.create_all(bind=eng)
     SecurityBase.metadata.create_all(bind=eng)
+
+    try:
+        from app.compat.seed_demo import ensure_seed_security_events
+        session = sessionmaker(bind=eng)()
+        try:
+            ensure_seed_security_events(session)
+        finally:
+            session.close()
+    except Exception:
+        pass
 
 
 init_db = init_metadata_db

@@ -39,6 +39,8 @@ class DDLGenerator:
         engine_type = snapshot.engine.lower()
         if "mysql" in engine_type:
             return self.generate_mysql_ddl(snapshot, insertion_order)
+        if "sqlite" in engine_type:
+            return self.generate_sqlite_ddl(snapshot, insertion_order)
         return self.generate_postgresql_ddl(snapshot, insertion_order)
 
     def generate_postgresql_ddl(self, snapshot: FullSchemaSnapshot, insertion_order: list[str]) -> DDLPlan:
@@ -233,3 +235,58 @@ class DDLGenerator:
         if "VARCHAR" in upper:
             return upper
         return "VARCHAR(255)"
+
+    def generate_sqlite_ddl(self, snapshot: FullSchemaSnapshot, insertion_order: list[str]) -> DDLPlan:
+        """Generate SQLite DDL targeting the 'nexusguard_decoy' schema."""
+        plan = DDLPlan(engine="sqlite", decoy_schema=DECOY_SCHEMA_NAME)
+
+        # 1. Attach database (acts as schema in SQLite)
+        plan.schema_statements.append(f"ATTACH DATABASE 'nexusguard_decoy.db' AS {DECOY_SCHEMA_NAME};")
+
+        # 2. Tables in topological insertion order
+        for table_key in insertion_order:
+            table_meta = self._find_table(snapshot, table_key)
+            if not table_meta:
+                continue
+
+            tbl_name = self._quote_ident(table_meta.table_name, "sqlite")
+            col_defs: list[str] = []
+
+            for col in table_meta.columns:
+                c_name = self._quote_ident(col.name, "sqlite")
+                c_type = self._map_sqlite_type(col.data_type)
+                nullable = "" if col.nullable else " NOT NULL"
+                col_defs.append(f"    {c_name} {c_type}{nullable}")
+
+            if table_meta.primary_keys:
+                pk_cols = ", ".join(self._quote_ident(k, "sqlite") for k in table_meta.primary_keys)
+                col_defs.append(f"    PRIMARY KEY ({pk_cols})")
+
+            drop_tbl = f'DROP TABLE IF EXISTS "{DECOY_SCHEMA_NAME}".{tbl_name};'
+            plan.table_statements.append(drop_tbl)
+
+            create_tbl = (
+                f'CREATE TABLE IF NOT EXISTS "{DECOY_SCHEMA_NAME}".{tbl_name} (\n'
+                + ",\n".join(col_defs)
+                + "\n);"
+            )
+            plan.table_statements.append(create_tbl)
+
+        # 3. Rollback
+        plan.rollback_statements.append(f"DETACH DATABASE {DECOY_SCHEMA_NAME};")
+
+        return plan
+
+    @staticmethod
+    def _map_sqlite_type(norm_type: str) -> str:
+        upper = norm_type.upper()
+        if "INT" in upper:
+            return "INTEGER"
+        if "FLOAT" in upper or "DOUBLE" in upper or "REAL" in upper:
+            return "REAL"
+        if "DECIMAL" in upper or "NUMERIC" in upper:
+            return "NUMERIC"
+        if "BLOB" in upper or "BYTEA" in upper or "BINARY" in upper:
+            return "BLOB"
+        return "TEXT"
+

@@ -12,7 +12,9 @@ logger = logging.getLogger("nexusguard.websocket.router")
 router = APIRouter(tags=["WebSocket SOC Stream"])
 
 
+@router.websocket("/ws")
 @router.websocket("/ws/alerts")
+@router.websocket("/ws/events")
 async def alerts_websocket_endpoint(websocket: WebSocket):
     """
     WebSocket endpoint for real-time cyber deception alerts.

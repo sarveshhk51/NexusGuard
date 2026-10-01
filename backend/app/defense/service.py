@@ -85,6 +85,22 @@ class DefenseService:
         logger.info(f"Unblocked IP: {ip_address}")
         return True
 
+    def unblock_all(self) -> int:
+        """Removes active blocks for all IPs in the firewall blocklist."""
+        records = (
+            self.db.query(BlockedIP)
+            .filter(BlockedIP.is_active == True)
+            .all()
+        )
+        now = datetime.now(timezone.utc)
+        count = len(records)
+        for r in records:
+            r.is_active = False
+            r.unblocked_at = now
+        self.db.commit()
+        logger.info(f"Unblocked all ({count}) IPs")
+        return count
+
     def list_blocked_ips(self, active_only: bool = True) -> List[Dict[str, Any]]:
         """Retrieves list of blocked IPs for SOC display."""
         query = self.db.query(BlockedIP)
