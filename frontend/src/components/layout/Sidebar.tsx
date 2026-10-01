@@ -12,7 +12,8 @@ import {
   Settings, 
   LogOut,
   ChevronRight,
-  Radio
+  Radio,
+  Flame
 } from 'lucide-react';
 import { NavigationTab } from '../../types/soc';
 
@@ -36,6 +37,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'attack-demo', label: 'Live Attack Arena', icon: Flame, badge: 'DEMO' },
     { id: 'targets', label: 'Targets', icon: Database, badge: '2' },
     { id: 'schema-intelligence', label: 'Schema Intelligence', icon: Binary },
     { id: 'deception', label: 'Deception', icon: Layers, badge: '142' },

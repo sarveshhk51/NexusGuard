@@ -27,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   const getTabTitle = (tab: NavigationTab): string => {
     switch (tab) {
       case 'dashboard': return 'SOC Dashboard';
+      case 'attack-demo': return 'Live Attack Arena & Deception Demonstration';
       case 'targets': return 'Monitored Target Clusters';
       case 'schema-intelligence': return 'Schema Intelligence & Decoy Mapping';
       case 'deception': return 'Canary & Honey Asset Management';

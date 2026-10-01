@@ -10,6 +10,7 @@ import { EventsView } from './components/views/EventsView';
 import { MonitoringView } from './components/views/MonitoringView';
 import { UsersView } from './components/views/UsersView';
 import { SettingsView } from './components/views/SettingsView';
+import { LiveAttackArenaView } from './components/views/LiveAttackArenaView';
 import { AttackSimulatorModal } from './components/modals/AttackSimulatorModal';
 import { useSimulatedWebSocket } from './hooks/useSimulatedWebSocket';
 import { 
@@ -80,6 +81,8 @@ export const App: React.FC = () => {
             onSelectMetric={handleSelectMetric}
           />
         );
+      case 'attack-demo':
+        return <LiveAttackArenaView onAttackSimulated={handleSimulatedAttackInjected} />;
       case 'targets':
         return <TargetsView />;
       case 'schema-intelligence':

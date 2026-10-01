@@ -100,6 +100,7 @@ export interface SystemStatus {
 
 export type NavigationTab = 
   | 'dashboard'
+  | 'attack-demo'
   | 'targets'
   | 'schema-intelligence'
   | 'deception'
