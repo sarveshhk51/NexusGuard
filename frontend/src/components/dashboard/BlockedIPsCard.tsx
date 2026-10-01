@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Unlock, CheckCircle, RefreshCw } from 'lucide-react';
+import { getApiUrl } from '../../utils/apiConfig';
 
 interface BlockedIPRecord {
   id: number;
@@ -19,7 +20,7 @@ export const BlockedIPsCard: React.FC = () => {
   const fetchBlockedIPs = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/defense/blocked-ips?active_only=true');
+      const res = await fetch(getApiUrl('/api/defense/blocked-ips?active_only=true'));
       if (res.ok) {
         const data = await res.json();
         setBlockedIPs(data);
@@ -40,7 +41,7 @@ export const BlockedIPsCard: React.FC = () => {
   const handleUnblock = async (ip: string) => {
     try {
       setUnblockingIp(ip);
-      const res = await fetch(`/api/defense/unblock/${ip}`, { method: 'POST' });
+      const res = await fetch(getApiUrl(`/api/defense/unblock/${ip}`), { method: 'POST' });
       if (res.ok) {
         setBlockedIPs(prev => prev.filter(item => item.ip_address !== ip));
       }

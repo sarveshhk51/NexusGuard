@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Flame, X, ShieldAlert, CheckCircle2, AlertOctagon, Terminal, ArrowRight, Send } from 'lucide-react';
 import { SecurityEvent } from '../../types/soc';
+import { getApiUrl } from '../../utils/apiConfig';
 
 interface AttackSimulatorModalProps {
   isOpen: boolean;
@@ -28,7 +29,7 @@ export const AttackSimulatorModal: React.FC<AttackSimulatorModalProps> = ({
     setError(null);
 
     try {
-      const res = await fetch('/api/defense/simulate-attack', {
+      const res = await fetch(getApiUrl('/api/defense/simulate-attack'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

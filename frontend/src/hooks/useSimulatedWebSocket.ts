@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { SecurityEvent, SeverityLevel } from '../types/soc';
 import { INITIAL_LIVE_EVENTS } from '../mock/socData';
 import { formatRelativeTime } from '../utils/formatters';
+import { WS_BASE_URL } from '../utils/apiConfig';
 
 const SIMULATED_ATTACK_POOL: Array<Omit<SecurityEvent, 'id' | 'timestamp' | 'relativeTime' | 'isNew'>> = [
   {
@@ -130,21 +131,68 @@ export function useSimulatedWebSocket() {
     }, 2800);
   }, []);
 
-  // Real-time event stream simulation ticker
+  // Live WebSocket listener with simulation ticker fallback
   useEffect(() => {
     if (isPaused) {
       setConnectionStatus('PAUSED');
       return;
     }
 
+    let ws: WebSocket | null = null;
+    let fallbackTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let isLiveWsActive = false;
+
+    // 1. Attempt connection to real backend WebSocket
+    try {
+      const liveWsUrl = WS_BASE_URL.replace(/\/ws\/?$/, '') + '/ws/events';
+      ws = new WebSocket(liveWsUrl);
+
+      ws.onopen = () => {
+        isLiveWsActive = true;
+        setConnectionStatus('CONNECTED');
+      };
+
+      ws.onmessage = (msgEvent) => {
+        try {
+          const parsed = JSON.parse(msgEvent.data);
+          if (parsed.type === 'security_event' && parsed.event) {
+            const e = parsed.event;
+            injectEvent({
+              sourceIp: e.source_ip || '198.51.100.42',
+              targetDatabase: `${e.database_name || 'production'} (${e.schema_name || 'decoy'})`,
+              eventType: e.event_type || 'DECOY_ACCESS',
+              query: e.query || 'SELECT * FROM nexusguard_decoy.admin_credentials',
+              severity: e.severity || 'CRITICAL',
+              detectionReason: e.detection_reason || 'Interception rule triggered',
+              responseAction: e.severity === 'CRITICAL' ? 'Attacker IP Dynamically Contained' : 'Telemetry Logged',
+              attackVector: e.event_type === 'DECOY_ACCESS' ? 'Decoy Infiltration Probe' : 'Database Reconnaissance',
+            });
+          }
+        } catch {
+          // ignore malformed payloads
+        }
+      };
+
+      ws.onerror = () => {
+        isLiveWsActive = false;
+      };
+
+      ws.onclose = () => {
+        isLiveWsActive = false;
+      };
+    } catch {
+      isLiveWsActive = false;
+    }
+
+    // 2. Simulation ticker (runs when not actively receiving live WS messages)
     setConnectionStatus('CONNECTED');
 
-    let timeoutId: ReturnType<typeof setTimeout>;
-
     const scheduleNextEvent = () => {
-      const delay = Math.floor(Math.random() * 3500) + 3500;
-      timeoutId = setTimeout(() => {
-        injectEvent();
+      const delay = Math.floor(Math.random() * 4000) + 4000;
+      fallbackTimeoutId = setTimeout(() => {
+        if (!isLiveWsActive) {
+          injectEvent();
+        }
         scheduleNextEvent();
       }, delay);
     };
@@ -152,7 +200,14 @@ export function useSimulatedWebSocket() {
     scheduleNextEvent();
 
     return () => {
-      clearTimeout(timeoutId);
+      if (fallbackTimeoutId) clearTimeout(fallbackTimeoutId);
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        ws.close();
+      }
     };
   }, [isPaused, injectEvent]);
 
