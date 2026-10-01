@@ -1,15 +1,20 @@
 """
 Compatibility Adapter Layer for NexusGuard.
-Provides standalone database connection and session management during Person 2 development.
-When merging with Person 1's code, this shim can either wrap or be replaced by Person 1's DatabaseAdapter.
+Provides unified database connection and session management across all subsystems:
+- Person 2: Schema Intelligence & Deception Engine
+- Person 3: Detection Engine, Security Events & Alerts
+- Active Defense: IP Containment & Blocklist
 """
 
 import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+
 from app.schema_intelligence.models import Base as SchemaBase
 from app.deception.models import DecoyDeployment as DeceptionBase
+from app.security_events.models import Base as SecurityBase
+from app.defense.models import BlockedIP
 
 
 class DatabaseAdapterCompat:
@@ -45,14 +50,24 @@ METADATA_DB_URL = os.getenv("METADATA_DATABASE_URL", "sqlite:///nexusguard_metad
 metadata_engine = create_engine(
     METADATA_DB_URL,
     connect_args={"check_same_thread": False} if "sqlite" in METADATA_DB_URL else {},
+    pool_pre_ping=True,
 )
 MetadataSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=metadata_engine)
 
+# Aliases for Person 3 compatibility
+engine = metadata_engine
+SessionLocal = MetadataSessionLocal
 
-def init_metadata_db():
-    """Initializes metadata database tables for snapshots and decoy deployments."""
-    SchemaBase.metadata.create_all(bind=metadata_engine)
-    DeceptionBase.metadata.create_all(bind=metadata_engine)
+
+def init_metadata_db(target_engine=None):
+    """Initializes all metadata database tables across all subsystems."""
+    eng = target_engine or metadata_engine
+    SchemaBase.metadata.create_all(bind=eng)
+    DeceptionBase.metadata.create_all(bind=eng)
+    SecurityBase.metadata.create_all(bind=eng)
+
+
+init_db = init_metadata_db
 
 
 def get_metadata_db():
@@ -63,3 +78,6 @@ def get_metadata_db():
         yield db
     finally:
         db.close()
+
+
+get_db = get_metadata_db
