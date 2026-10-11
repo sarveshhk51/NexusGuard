@@ -7,7 +7,7 @@ If an attacker IP has been blocked, immediately drops/rejects the connection wit
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-from app.compat.database import SessionLocal
+from app.compat.database import SessionLocal, get_db
 from app.defense.service import DefenseService
 
 # Endpoints that are always accessible even when under containment
@@ -41,7 +41,15 @@ class IPContainmentMiddleware(BaseHTTPMiddleware):
             client_ip = "127.0.0.1"
 
         # Check against blocked IPs in database
-        db = SessionLocal()
+        if hasattr(request, "app") and get_db in getattr(request.app, "dependency_overrides", {}):
+            override_fn = request.app.dependency_overrides[get_db]
+            res = override_fn()
+            db = next(res) if hasattr(res, "__next__") else res
+            should_close = False
+        else:
+            db = SessionLocal()
+            should_close = True
+
         try:
             defense = DefenseService(db)
             if defense.is_ip_blocked(client_ip):
@@ -55,6 +63,7 @@ class IPContainmentMiddleware(BaseHTTPMiddleware):
                     },
                 )
         finally:
-            db.close()
+            if should_close:
+                db.close()
 
         return await call_next(request)
