@@ -21,7 +21,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def init_db(target_engine=None):
-    """Initializes tables for Person 3 models."""
+    """Initializes tables for Person 3 models and active defense."""
+    import app.defense.models  # noqa: F401 - registers BlockedIP with Base
     eng = target_engine or engine
     Base.metadata.create_all(bind=eng)
 
