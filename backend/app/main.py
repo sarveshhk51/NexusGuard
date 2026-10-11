@@ -50,9 +50,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.defense.router import router as defense_router
+
 # Mount Person 3 Routers
 app.include_router(security_events_router)
 app.include_router(websocket_router)
+app.include_router(defense_router)
 
 
 @app.get("/", include_in_schema=False)
@@ -65,6 +68,12 @@ def root():
     "/health",
     tags=["System"],
     summary="System Health Check",
+    description="Returns operational status of the NexusGuard Deception Engine.",
+)
+@app.get(
+    "/api/health",
+    tags=["System"],
+    summary="System Health Check (API Prefixed)",
     description="Returns operational status of the NexusGuard Deception Engine.",
 )
 def health_check():
