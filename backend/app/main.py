@@ -36,6 +36,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from app.defense.middleware import IPContainmentMiddleware
+
+# IP Containment Middleware (drops connections from banned attacker IPs)
+app.add_middleware(IPContainmentMiddleware)
+
 # Cross-Origin Resource Sharing (CORS) setup for Frontend (Person 4)
 app.add_middleware(
     CORSMiddleware,

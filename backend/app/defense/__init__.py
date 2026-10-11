@@ -5,5 +5,6 @@ Provides dynamic IP containment, firewall rules, and SIEM webhook alerts.
 
 from app.defense.models import BlockedIP
 from app.defense.service import DefenseService
+from app.defense.middleware import IPContainmentMiddleware
 
-__all__ = ["BlockedIP", "DefenseService"]
+__all__ = ["BlockedIP", "DefenseService", "IPContainmentMiddleware"]
